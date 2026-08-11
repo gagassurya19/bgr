@@ -32,9 +32,8 @@ function getSupabaseAdmin(): SupabaseClient {
   return supabaseAdmin;
 }
 
-function getLocalStorageRoot(): string {
-  return process.env.STORAGE_PATH ?? "./storage/documents";
-}
+/** Statically scoped for Next.js/Turbopack — do not use env vars in path.join. */
+const LOCAL_STORAGE_ROOT = path.join(process.cwd(), "storage", "documents");
 
 function isSupabaseKey(storageKey: string): boolean {
   return storageKey.startsWith("supabase:");
@@ -66,8 +65,11 @@ export async function writeDocumentFile(
     return `supabase:${objectKey}`;
   }
 
-  const storageRoot = getLocalStorageRoot();
-  const referralDir = path.join(storageRoot, referralId);
+  if (process.env.NODE_ENV === "production") {
+    throw new Error("Supabase storage belum dikonfigurasi untuk production.");
+  }
+
+  const referralDir = path.join(LOCAL_STORAGE_ROOT, referralId);
   const storagePath = path.join(referralDir, storedFilename);
   await mkdir(referralDir, { recursive: true });
   await writeFile(storagePath, buffer);
