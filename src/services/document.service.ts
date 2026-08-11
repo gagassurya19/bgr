@@ -57,10 +57,16 @@ export const documentService = {
     const safeOriginal = sanitizeFilename(file.name);
     const storedFilename = `${documentId}-${safeOriginal}`;
 
-    let storagePath: string | null = null;
+    let storagePath: string | undefined;
 
     try {
-      storagePath = await writeDocumentFile(referralId, storedFilename, buffer, file.type);
+      const savedStoragePath = await writeDocumentFile(
+        referralId,
+        storedFilename,
+        buffer,
+        file.type,
+      );
+      storagePath = savedStoragePath;
 
       const doc = await prisma.$transaction(async (tx) => {
         const created = await tx.referralDocument.create({
@@ -69,7 +75,7 @@ export const documentService = {
             requirementId,
             originalFilename: file.name,
             storedFilename,
-            storagePath,
+            storagePath: savedStoragePath,
             mimeType: file.type,
             fileSize: BigInt(file.size),
             checksum,

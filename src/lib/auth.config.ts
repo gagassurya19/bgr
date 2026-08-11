@@ -1,3 +1,4 @@
+import type { UserRole } from "@prisma/client";
 import type { NextAuthConfig } from "next-auth";
 
 export const authConfig = {
@@ -9,18 +10,18 @@ export const authConfig = {
     jwt({ token, user }) {
       if (user) {
         token.id = user.id!;
-        token.role = user.role as string;
-        token.businessUnitId = user.businessUnitId as string | null;
-        token.businessGroupId = user.businessGroupId as string | null;
+        token.role = user.role;
+        token.businessUnitId = user.businessUnitId;
+        token.businessGroupId = user.businessGroupId;
       }
       return token;
     },
     session({ session, token }) {
       if (session.user) {
         session.user.id = token.id as string;
-        session.user.role = token.role as string;
-        session.user.businessUnitId = (token.businessUnitId as string | null) ?? null;
-        session.user.businessGroupId = (token.businessGroupId as string | null) ?? null;
+        session.user.role = token.role as UserRole;
+        session.user.businessUnitId = token.businessUnitId ?? null;
+        session.user.businessGroupId = token.businessGroupId ?? null;
       }
       return session;
     },
