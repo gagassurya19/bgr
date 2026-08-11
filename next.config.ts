@@ -20,7 +20,8 @@ function getAllowedDevOrigins(): string[] {
 }
 
 const nextConfig: NextConfig = {
-  output: "standalone",
+  // Standalone is for Docker only — breaks Vercel builds on Next.js 16.3+ (see vercel/next.js#96646).
+  output: process.env.VERCEL ? undefined : "standalone",
   allowedDevOrigins: getAllowedDevOrigins(),
   experimental: {
     serverActions: {
