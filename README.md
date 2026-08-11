@@ -1,36 +1,88 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# BGR - Business Group Referral
 
-## Getting Started
+Monolithic internal web application for managing business group referrals on a local office LAN.
 
-First, run the development server:
+## Stack
+
+- Next.js (App Router) + TypeScript
+- PostgreSQL + Prisma ORM
+- Tailwind CSS
+- NextAuth (credentials) + bcrypt
+
+## Quick Start (Development)
+
+### 1. Environment
+
+Copy `.env.example` to `.env.local` and adjust values:
+
+```bash
+cp .env.example .env.local
+```
+
+### 2. Start PostgreSQL (Docker)
+
+```bash
+docker compose up -d postgres
+```
+
+### 3. Database setup
+
+```bash
+npm run db:generate
+npm run db:migrate
+npm run db:seed
+```
+
+### 4. Run app
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000)
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Demo Accounts
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+| Email | Password | Role |
+|-------|----------|------|
+| admin@example.local | Password123! | ADMIN |
+| officer@example.local | Password123! | REFERRAL_OFFICER |
+| approver@example.local | Password123! | HEAD_UNIT |
+| processor@example.local | Password123! | SUBSIDIARY_PROCESSOR |
+| viewer@example.local | Password123! | VIEWER |
 
-## Learn More
+## LAN Deployment
 
-To learn more about Next.js, take a look at the following resources:
+Users access the app via browser:
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```text
+http://SERVER_IP:3000
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Run full stack with Docker Compose:
 
-## Deploy on Vercel
+```bash
+docker compose up -d
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Backup
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Backup both:
+
+1. PostgreSQL database
+2. `storage/documents/` folder
+
+## Scripts
+
+- `npm run dev` — development server
+- `npm run build` — production build
+- `npm run start` — production server
+- `npm run lint` — ESLint
+- `npm run typecheck` — TypeScript check
+- `npm run test` — unit tests
+- `npm run db:migrate` — run migrations
+- `npm run db:seed` — seed development data
+
+## Spec Documents
+
+See `spec/` folder for PRD, technical specification, database schema, and agent rules.

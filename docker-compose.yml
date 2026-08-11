@@ -1,0 +1,37 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: bgr
+      POSTGRES_PASSWORD: bgr_secret
+      POSTGRES_DB: bgr
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bgr -d bgr"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  bgr-app:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://bgr:bgr_secret@postgres:5432/bgr
+      AUTH_SECRET: ${AUTH_SECRET:-change-me-in-production}
+      APP_URL: ${APP_URL:-http://localhost:3000}
+      STORAGE_PATH: /app/storage/documents
+    ports:
+      - "3000:3000"
+    volumes:
+      - document_storage:/app/storage/documents
+
+volumes:
+  postgres_data:
+  document_storage:

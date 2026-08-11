@@ -1,0 +1,403 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum UserRole {
+  ADMIN
+  REFERRAL_OFFICER
+  HEAD_UNIT
+  SUBSIDIARY_PROCESSOR
+  VIEWER
+  SUPER_ADMIN
+}
+
+enum ReferralStatus {
+  DRAFT
+  SUBMITTED
+  VALIDATING
+  VALIDATION_FAILED
+  PENDING_APPROVAL
+  REVISION_REQUIRED
+  APPROVED
+  REJECTED
+  SUBMITTED_TO_SUBSIDIARY
+  IN_PROCESS
+  COMPLETED
+  CANCELLED
+}
+
+enum ValidationSeverity {
+  ERROR
+  WARNING
+  INFO
+}
+
+enum ValidationRunStatus {
+  RUNNING
+  PASSED
+  FAILED
+  COMPLETED_WITH_WARNING
+}
+
+enum ApprovalDecision {
+  APPROVED
+  REJECTED
+  REVISION_REQUIRED
+}
+
+enum DocumentStatus {
+  REQUIRED
+  UPLOADED
+  VALID
+  INVALID
+  REQUIRES_REVISION
+}
+
+enum NotificationType {
+  REFERRAL_SUBMITTED
+  APPROVAL_REQUIRED
+  REFERRAL_APPROVED
+  REFERRAL_REJECTED
+  REVISION_REQUIRED
+  REFERRAL_ASSIGNED
+  STATUS_CHANGED
+  SYSTEM
+}
+
+enum AuditAction {
+  LOGIN
+  LOGOUT
+  CREATE
+  UPDATE
+  DELETE
+  SUBMIT
+  VALIDATE
+  APPROVE
+  REJECT
+  REQUEST_REVISION
+  ASSIGN
+  STATUS_CHANGE
+  UPLOAD
+  DOWNLOAD
+  USER_MANAGEMENT
+  SETTINGS_CHANGE
+}
+
+enum EntityType {
+  USER
+  REFERRAL
+  DOCUMENT
+  APPROVAL
+  BUSINESS_GROUP
+  VALIDATION_RUN
+  SYSTEM
+}
+
+model User {
+  id           String     @id @default(uuid())
+  name         String
+  email        String     @unique
+  username     String     @unique
+  passwordHash String
+  role         UserRole
+  status       UserStatus @default(ACTIVE)
+
+  businessUnitId  String?
+  businessUnit    BusinessUnit?  @relation(fields: [businessUnitId], references: [id])
+  businessGroupId String?
+  businessGroup   BusinessGroup? @relation(fields: [businessGroupId], references: [id])
+
+  referralsCreated Referral[]             @relation("ReferralCreator")
+  documentsUploaded ReferralDocument[]
+  approvals         Approval[]
+  auditEvents       AuditEvent[]
+  notifications     Notification[]
+  assignments       ReferralAssignment[]   @relation("AssignmentUser")
+  assignmentsMade   ReferralAssignment[]   @relation("AssignmentActor")
+  statusChanges     ReferralStatusHistory[]
+  validationRuns    ValidationRun[]
+
+  lastLoginAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([role])
+  @@index([status])
+  @@index([businessUnitId])
+  @@index([businessGroupId])
+}
+
+model BusinessUnit {
+  id          String  @id @default(uuid())
+  code        String  @unique
+  name        String
+  description String?
+  isActive    Boolean @default(true)
+
+  users User[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model BusinessGroup {
+  id          String  @id @default(uuid())
+  code        String  @unique
+  name        String
+  description String?
+  isActive    Boolean @default(true)
+
+  referrals            Referral[]
+  users                User[]
+  documentRequirements DocumentRequirement[]
+  assignments          ReferralAssignment[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Referral {
+  id              String         @id @default(uuid())
+  referralNumber  String         @unique
+  createdById     String
+  businessGroupId String
+  status          ReferralStatus @default(DRAFT)
+
+  customerName       String?
+  customerIdentifier String?
+  customerEmail      String?
+  customerPhone      String?
+
+  subject     String?
+  description String?
+
+  submittedAt DateTime?
+  approvedAt  DateTime?
+  completedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  createdBy     User          @relation("ReferralCreator", fields: [createdById], references: [id])
+  businessGroup BusinessGroup @relation(fields: [businessGroupId], references: [id])
+
+  documents      ReferralDocument[]
+  validationRuns ValidationRun[]
+  approvals      Approval[]
+  statusHistory  ReferralStatusHistory[]
+  assignments    ReferralAssignment[]
+  notifications  Notification[]
+  auditEvents    AuditEvent[]
+
+  @@index([status])
+  @@index([createdById])
+  @@index([businessGroupId])
+  @@index([createdAt])
+  @@index([updatedAt])
+  @@index([referralNumber])
+}
+
+model DocumentRequirement {
+  id              String  @id @default(uuid())
+  businessGroupId String?
+  code            String
+  name            String
+  description     String?
+  isRequired      Boolean @default(true)
+  isActive        Boolean @default(true)
+  sortOrder       Int     @default(0)
+
+  businessGroup BusinessGroup?     @relation(fields: [businessGroupId], references: [id])
+  documents     ReferralDocument[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([businessGroupId, code])
+  @@index([businessGroupId])
+}
+
+model ReferralDocument {
+  id            String @id @default(uuid())
+  referralId    String
+  requirementId String?
+
+  originalFilename String
+  storedFilename   String
+  storagePath      String
+  mimeType         String
+  fileSize         BigInt
+  checksum         String
+
+  status       DocumentStatus @default(UPLOADED)
+  uploadedById String
+  uploadedAt   DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  referral    Referral             @relation(fields: [referralId], references: [id])
+  requirement DocumentRequirement? @relation(fields: [requirementId], references: [id])
+  uploadedBy  User                 @relation(fields: [uploadedById], references: [id])
+
+  @@index([referralId])
+  @@index([requirementId])
+  @@index([status])
+}
+
+model ValidationRule {
+  id            String             @id @default(uuid())
+  code          String             @unique
+  name          String
+  description   String?
+  severity      ValidationSeverity
+  isActive      Boolean            @default(true)
+  sortOrder     Int                @default(0)
+  configuration Json?
+
+  results ValidationResult[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model ValidationRun {
+  id            String              @id @default(uuid())
+  referralId    String
+  status        ValidationRunStatus
+  startedAt     DateTime            @default(now())
+  completedAt   DateTime?
+  triggeredById String?
+
+  referral    Referral           @relation(fields: [referralId], references: [id])
+  triggeredBy User?              @relation(fields: [triggeredById], references: [id])
+  results     ValidationResult[]
+
+  @@index([referralId])
+  @@index([status])
+}
+
+model ValidationResult {
+  id              String             @id @default(uuid())
+  validationRunId String
+  ruleId          String
+  passed          Boolean
+  severity        ValidationSeverity
+  message         String
+  createdAt       DateTime           @default(now())
+
+  validationRun ValidationRun  @relation(fields: [validationRunId], references: [id])
+  rule          ValidationRule @relation(fields: [ruleId], references: [id])
+
+  @@index([validationRunId])
+  @@index([ruleId])
+}
+
+model Approval {
+  id         String           @id @default(uuid())
+  referralId String
+  approverId String
+  decision   ApprovalDecision
+  note       String?
+  decidedAt  DateTime         @default(now())
+  createdAt  DateTime         @default(now())
+
+  referral Referral @relation(fields: [referralId], references: [id])
+  approver User     @relation(fields: [approverId], references: [id])
+
+  @@index([referralId])
+  @@index([approverId])
+}
+
+model ReferralStatusHistory {
+  id          String          @id @default(uuid())
+  referralId  String
+  fromStatus  ReferralStatus?
+  toStatus    ReferralStatus
+  changedById String
+  note        String?
+  createdAt   DateTime        @default(now())
+
+  referral  Referral @relation(fields: [referralId], references: [id])
+  changedBy User     @relation(fields: [changedById], references: [id])
+
+  @@index([referralId])
+  @@index([createdAt])
+}
+
+model ReferralAssignment {
+  id               String    @id @default(uuid())
+  referralId       String
+  assignedToUserId String?
+  businessGroupId  String?
+  assignedById     String
+  assignedAt       DateTime  @default(now())
+  unassignedAt     DateTime?
+
+  referral       Referral       @relation(fields: [referralId], references: [id])
+  assignedToUser User?          @relation("AssignmentUser", fields: [assignedToUserId], references: [id])
+  assignedBy     User           @relation("AssignmentActor", fields: [assignedById], references: [id])
+  businessGroup  BusinessGroup? @relation(fields: [businessGroupId], references: [id])
+
+  @@index([referralId])
+  @@index([assignedToUserId])
+  @@index([businessGroupId])
+}
+
+model Notification {
+  id          String           @id @default(uuid())
+  recipientId String
+  type        NotificationType
+  title       String
+  message     String
+  referralId  String?
+  isRead      Boolean          @default(false)
+  readAt      DateTime?
+  createdAt   DateTime         @default(now())
+
+  recipient User      @relation(fields: [recipientId], references: [id])
+  referral  Referral? @relation(fields: [referralId], references: [id])
+
+  @@index([recipientId, isRead])
+  @@index([createdAt])
+}
+
+model AuditEvent {
+  id         String      @id @default(uuid())
+  actorId    String?
+  action     AuditAction
+  entityType EntityType
+  entityId   String?
+  oldData    Json?
+  newData    Json?
+  metadata   Json?
+  ipAddress  String?
+  userAgent  String?
+  referralId String?
+  createdAt  DateTime    @default(now())
+
+  actor    User?     @relation(fields: [actorId], references: [id])
+  referral Referral? @relation(fields: [referralId], references: [id])
+
+  @@index([actorId])
+  @@index([entityType, entityId])
+  @@index([createdAt])
+  @@index([referralId])
+}
+
+model SystemSetting {
+  id          String @id @default(uuid())
+  key         String @unique
+  value       Json
+  description String?
+  updatedById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
