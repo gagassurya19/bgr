@@ -23,7 +23,7 @@ const navItems: Array<{
   roles?: UserRole[];
 }> = [
   { href: "/dashboard", label: "Overview", icon: LayoutDashboard },
-  { href: "/referrals", label: "Referral", icon: FileText, roles: ["REFERRAL_OFFICER", "ADMIN", "SUPER_ADMIN", "HEAD_UNIT", "VIEWER"] },
+  { href: "/referrals", label: "Referral", icon: FileText, roles: ["SUBSIDIARY_PROCESSOR","REFERRAL_OFFICER", "ADMIN", "SUPER_ADMIN", "HEAD_UNIT", "VIEWER"] },
   { href: "/documents", label: "Dokumen", icon: FolderOpen },
   { href: "/approvals", label: "Approval", icon: CheckSquare, roles: ["HEAD_UNIT", "ADMIN", "SUPER_ADMIN"] },
   { href: "/monitoring", label: "Monitoring", icon: Monitor },
