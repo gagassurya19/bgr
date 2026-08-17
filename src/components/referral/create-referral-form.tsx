@@ -18,12 +18,16 @@ export function CreateReferralForm({ businessGroups }: { businessGroups: Busines
     setError(null);
 
     const form = new FormData(e.currentTarget);
+    const rawAnnualTax = form.get("annualTaxRevenue") as string;
+    const annualTaxRevenue = rawAnnualTax ? parseFloat(rawAnnualTax) : undefined;
+
     const result = await createReferralAction({
       businessGroupId: form.get("businessGroupId") as string,
       customerName: (form.get("customerName") as string) || undefined,
       customerIdentifier: (form.get("customerIdentifier") as string) || undefined,
       customerEmail: (form.get("customerEmail") as string) || undefined,
       customerPhone: (form.get("customerPhone") as string) || undefined,
+      annualTaxRevenue,
       subject: (form.get("subject") as string) || undefined,
       description: (form.get("description") as string) || undefined,
     });
@@ -73,6 +77,17 @@ export function CreateReferralForm({ businessGroups }: { businessGroups: Busines
               <Label htmlFor="customerPhone">Telepon</Label>
               <Input id="customerPhone" name="customerPhone" />
             </div>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="annualTaxRevenue">Omset per Tahun (yang dilaporkan ke pajak)</Label>
+            <Input
+              id="annualTaxRevenue"
+              name="annualTaxRevenue"
+              type="number"
+              step="1000000"
+              min="0"
+              placeholder="Contoh: 500000000 (Rp 500 Jt)"
+            />
           </div>
           <div className="space-y-2">
             <Label htmlFor="subject">Subjek</Label>

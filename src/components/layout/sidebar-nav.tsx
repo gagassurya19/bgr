@@ -11,6 +11,8 @@ import {
   Bell,
   Settings,
   UsersIcon,
+  Calculator,
+  ShieldCheck,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { UserRole } from "@prisma/client";
@@ -24,6 +26,8 @@ const navItems: Array<{
 }> = [
   { href: "/dashboard", label: "Overview", icon: LayoutDashboard },
   { href: "/referrals", label: "Referral", icon: FileText, roles: ["SUBSIDIARY_PROCESSOR","REFERRAL_OFFICER", "ADMIN", "SUPER_ADMIN", "HEAD_UNIT", "VIEWER"] },
+  { href: "/simulasi-kkb", label: "Simulasi KKB", icon: Calculator },
+  { href: "/simulasi-asuransi", label: "Simulasi Asuransi", icon: ShieldCheck },
   { href: "/documents", label: "Dokumen", icon: FolderOpen },
   { href: "/approvals", label: "Approval", icon: CheckSquare, roles: ["HEAD_UNIT", "ADMIN", "SUPER_ADMIN"] },
   { href: "/monitoring", label: "Monitoring", icon: Monitor },

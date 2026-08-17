@@ -9,6 +9,7 @@ import {
   Server,
   Shield,
   Users,
+  Calculator,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui";
@@ -112,6 +113,13 @@ export function SettingsHub({
       description: "Kelola jenis dokumen wajib (KTP, KK, NPWP, dll.) per business group.",
       icon: FileStack,
       meta: `${stats.documentRequirements} persyaratan aktif`,
+    },
+    {
+      href: "/settings/simulasi",
+      title: "Tarif Simulasi (KKB & Asuransi)",
+      description: "Atur suku bunga default KKB, rate asuransi mobil/jiwa/kesehatan, dan biaya admin.",
+      icon: Calculator,
+      meta: "Default tarif kalkulator",
     },
   ];
 

@@ -21,13 +21,6 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="id" className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`} suppressHydrationWarning>
-      <head>
-        <script
-          dangerouslySetInnerHTML={{
-            __html: `(function(){try{document.documentElement.classList.remove('dark');localStorage.removeItem('bgr-theme');}catch(e){}})();`,
-          }}
-        />
-      </head>
       <body className="min-h-full">
         {children}
         <DemoGuideFab />

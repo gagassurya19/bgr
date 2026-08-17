@@ -33,13 +33,33 @@ export function canViewDashboard(): boolean {
   return true;
 }
 
+export function canViewDocuments(role: UserRole): boolean {
+  return (
+    role === "ADMIN" || role === "SUPER_ADMIN" || role === "HEAD_UNIT" || role === "REFERRAL_OFFICER"
+  );
+}
+
+export function canViewReferralDocuments(
+  role: UserRole,
+  userId: string,
+  createdById: string,
+): boolean {
+  if (role === "ADMIN" || role === "SUPER_ADMIN" || role === "HEAD_UNIT") return true;
+  return role === "REFERRAL_OFFICER" && userId === createdById;
+}
+
 export function canEditReferral(
   role: UserRole,
   userId: string,
   createdById: string,
   status: ReferralStatus,
 ): boolean {
-  const editableStatuses: ReferralStatus[] = ["DRAFT", "VALIDATION_FAILED", "REVISION_REQUIRED"];
+  const editableStatuses: ReferralStatus[] = [
+    "DRAFT",
+    "VALIDATION_FAILED",
+    "REVISION_REQUIRED",
+    "REVISION_BY_SUBSIDIARY",
+  ];
   if (!editableStatuses.includes(status)) return false;
   if (role === "ADMIN" || role === "SUPER_ADMIN") return true;
   return role === "REFERRAL_OFFICER" && userId === createdById;
@@ -51,7 +71,12 @@ export function canSubmitReferral(
   createdById: string,
   status: ReferralStatus,
 ): boolean {
-  const submittable: ReferralStatus[] = ["DRAFT", "VALIDATION_FAILED", "REVISION_REQUIRED"];
+  const submittable: ReferralStatus[] = [
+    "DRAFT",
+    "VALIDATION_FAILED",
+    "REVISION_REQUIRED",
+    "REVISION_BY_SUBSIDIARY",
+  ];
   if (!submittable.includes(status)) return false;
   if (role === "ADMIN" || role === "SUPER_ADMIN") return true;
   return role === "REFERRAL_OFFICER" && userId === createdById;

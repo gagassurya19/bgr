@@ -6,6 +6,7 @@ import {
   canEditReferral,
   canProcessReferral,
   canSubmitReferral,
+  canViewReferralDocuments,
 } from "@/lib/rbac";
 import { ReferralDetailView } from "@/components/referral/referral-detail-view";
 
@@ -24,7 +25,13 @@ export default async function ReferralDetailPage({
       businessGroup: { select: { id: true, name: true } },
       createdBy: { select: { name: true } },
       documents: {
-        include: { requirement: { select: { code: true, name: true } } },
+        select: {
+          id: true,
+          originalFilename: true,
+          mimeType: true,
+          uploadedAt: true,
+          requirement: { select: { code: true, name: true } },
+        },
         orderBy: { uploadedAt: "desc" },
       },
       validationRuns: {
@@ -56,14 +63,26 @@ export default async function ReferralDetailPage({
     orderBy: { sortOrder: "asc" },
   });
 
+  // Serialize Decimal (annualTaxRevenue) to plain number for the client component.
+  const serializableReferral = {
+    ...referral,
+    annualTaxRevenue:
+      referral.annualTaxRevenue != null ? Number(referral.annualTaxRevenue) : null,
+  };
+
   return (
     <ReferralDetailView
-      referral={referral}
+      referral={serializableReferral}
       requirements={requirements}
       canEdit={canEditReferral(session.user.role, session.user.id, referral.createdById, referral.status)}
       canSubmit={canSubmitReferral(session.user.role, session.user.id, referral.createdById, referral.status)}
       canApprove={canApproveReferral(session.user.role)}
       canProcess={canProcessReferral(session.user.role)}
+      canViewDocuments={canViewReferralDocuments(
+        session.user.role,
+        session.user.id,
+        referral.createdById,
+      )}
     />
   );
 }

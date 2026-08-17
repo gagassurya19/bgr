@@ -25,6 +25,18 @@ describe("referralStateService", () => {
     expect(referralStateService.canTransition("REVISION_REQUIRED", "SUBMITTED", "REFERRAL_OFFICER")).toBe(true);
   });
 
+  it("allows resubmit after subsidiary revision for referral officer", () => {
+    expect(referralStateService.canTransition("REVISION_BY_SUBSIDIARY", "SUBMITTED", "REFERRAL_OFFICER")).toBe(true);
+  });
+
+  it("allows subsidiary processor to request revision, approve, and reject from submitted and in_process", () => {
+    expect(referralStateService.canTransition("SUBMITTED_TO_SUBSIDIARY", "REVISION_BY_SUBSIDIARY", "SUBSIDIARY_PROCESSOR")).toBe(true);
+    expect(referralStateService.canTransition("SUBMITTED_TO_SUBSIDIARY", "COMPLETED", "SUBSIDIARY_PROCESSOR")).toBe(true);
+    expect(referralStateService.canTransition("SUBMITTED_TO_SUBSIDIARY", "REJECTED", "SUBSIDIARY_PROCESSOR")).toBe(true);
+    expect(referralStateService.canTransition("IN_PROCESS", "REVISION_BY_SUBSIDIARY", "SUBSIDIARY_PROCESSOR")).toBe(true);
+    expect(referralStateService.canTransition("IN_PROCESS", "COMPLETED", "SUBSIDIARY_PROCESSOR")).toBe(true);
+  });
+
   it("allows resubmit after validation failed for referral officer", () => {
     expect(referralStateService.canTransition("VALIDATION_FAILED", "SUBMITTED", "REFERRAL_OFFICER")).toBe(true);
   });

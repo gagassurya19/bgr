@@ -123,4 +123,36 @@ export const documentService = {
     const content = await readDocumentFile(doc.storagePath);
     return { doc, content };
   },
+
+  async remove(documentId: string, actorId: string, referralId: string) {
+    const doc = await prisma.referralDocument.findFirst({
+      where: { id: documentId, referralId },
+    });
+    if (!doc) {
+      throw new AppError("NOT_FOUND", "Dokumen tidak ditemukan.");
+    }
+
+    await prisma.$transaction(async (tx) => {
+      await tx.referralDocument.delete({ where: { id: doc.id } });
+      await auditService.log(
+        {
+          actorId,
+          action: "DELETE",
+          entityType: "DOCUMENT",
+          entityId: doc.id,
+          referralId,
+          oldData: { filename: doc.originalFilename, requirementId: doc.requirementId },
+        },
+        tx,
+      );
+    });
+
+    try {
+      await deleteDocumentFile(doc.storagePath);
+    } catch {
+      // ignore cleanup failure
+    }
+
+    return doc;
+  },
 };

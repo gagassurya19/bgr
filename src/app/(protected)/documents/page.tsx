@@ -1,5 +1,7 @@
 import { prisma } from "@/lib/db";
 import { formatDate } from "@/lib/utils";
+import { auth } from "@/lib/auth";
+import { canViewReferralDocuments } from "@/lib/rbac";
 import {
   Card,
   CardContent,
@@ -14,15 +16,25 @@ import {
 } from "@/components/ui";
 
 export default async function DocumentsPage() {
+  const session = await auth();
+  const userId = session?.user?.id ?? "";
+
   const documents = await prisma.referralDocument.findMany({
     include: {
-      referral: { select: { referralNumber: true } },
+      referral: { select: { id: true, referralNumber: true, createdById: true } },
       uploadedBy: { select: { name: true } },
       requirement: { select: { code: true, name: true } },
     },
     orderBy: { uploadedAt: "desc" },
     take: 50,
   });
+
+  const withAccess = documents.map((d) => ({
+    ...d,
+    canView: session?.user
+      ? canViewReferralDocuments(session.user.role, userId, d.referral.createdById)
+      : false,
+  }));
 
   return (
     <div className="space-y-6">
@@ -45,13 +57,24 @@ export default async function DocumentsPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {documents.length === 0 ? (
+                {withAccess.length === 0 ? (
                   <TableEmpty colSpan={5} message="Belum ada dokumen." />
                 ) : (
-                  documents.map((d) => (
+                  withAccess.map((d) => (
                     <TableRow key={d.id}>
                       <TableCell className="max-w-[200px] truncate font-medium text-slate-900 dark:text-white">
-                        {d.originalFilename}
+                        {d.canView ? (
+                          <a
+                            href={`/api/documents/${d.id}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="font-medium text-[#0066AE] transition hover:underline dark:text-[#63ACF2]"
+                          >
+                            {d.originalFilename}
+                          </a>
+                        ) : (
+                          d.originalFilename
+                        )}
                       </TableCell>
                       <TableCell>{d.referral.referralNumber}</TableCell>
                       <TableCell>{d.requirement?.name ?? "Umum"}</TableCell>

@@ -19,6 +19,7 @@ const createReferralSchema = z.object({
   customerIdentifier: z.string().optional(),
   customerEmail: z.string().email().optional().or(z.literal("")),
   customerPhone: z.string().optional(),
+  annualTaxRevenue: z.number().nonnegative().optional().nullable(),
   subject: z.string().optional(),
   description: z.string().optional(),
 });
@@ -50,6 +51,7 @@ export async function createReferralAction(
         customerIdentifier: parsed.data.customerIdentifier,
         customerEmail: parsed.data.customerEmail || null,
         customerPhone: parsed.data.customerPhone,
+        annualTaxRevenue: parsed.data.annualTaxRevenue != null ? parsed.data.annualTaxRevenue : null,
         subject: parsed.data.subject,
         description: parsed.data.description,
         status: "DRAFT",
@@ -114,6 +116,7 @@ export async function updateReferralAction(
       data: {
         ...parsed.data,
         customerEmail: parsed.data.customerEmail || null,
+        annualTaxRevenue: parsed.data.annualTaxRevenue !== undefined ? parsed.data.annualTaxRevenue : undefined,
       },
     });
 

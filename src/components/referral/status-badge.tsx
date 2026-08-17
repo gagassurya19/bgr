@@ -15,6 +15,7 @@ const statusConfig: Record<
   REJECTED: { label: "Ditolak", variant: "danger" },
   SUBMITTED_TO_SUBSIDIARY: { label: "Ke Anak Perusahaan", variant: "info" },
   IN_PROCESS: { label: "Diproses", variant: "info" },
+  REVISION_BY_SUBSIDIARY: { label: "Revisi Anak Perusahaan", variant: "warning" },
   COMPLETED: { label: "Selesai", variant: "success" },
   CANCELLED: { label: "Dibatalkan", variant: "default" },
 };

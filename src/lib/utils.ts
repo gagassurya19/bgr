@@ -16,3 +16,12 @@ export function formatDate(date: Date | string | null | undefined): string {
 export function formatNumber(value: number): string {
   return new Intl.NumberFormat("id-ID").format(value);
 }
+
+export function formatCurrency(value: number): string {
+  return new Intl.NumberFormat("id-ID", {
+    style: "currency",
+    currency: "IDR",
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }).format(Math.round(value));
+}

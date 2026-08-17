@@ -59,3 +59,31 @@ export async function uploadDocumentAction(
     return failure("UPLOAD_FAILED", message);
   }
 }
+
+export async function deleteDocumentAction(
+  referralId: string,
+  documentId: string,
+): Promise<ActionResult<{ id: string }>> {
+  const session = await auth();
+  if (!session?.user) {
+    return failure("UNAUTHORIZED", "Silakan login terlebih dahulu.");
+  }
+
+  const referral = await prisma.referral.findUnique({ where: { id: referralId } });
+  if (!referral) {
+    return failure("NOT_FOUND", "Referral tidak ditemukan.");
+  }
+
+  if (!canEditReferral(session.user.role, session.user.id, referral.createdById, referral.status)) {
+    return failure("REFERRAL_NOT_EDITABLE", "Referral sudah tidak dapat diedit pada status ini.");
+  }
+
+  try {
+    const doc = await documentService.remove(documentId, session.user.id, referralId);
+    revalidatePath(`/referrals/${referralId}`);
+    return success({ id: doc.id });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Gagal menghapus dokumen.";
+    return failure("DELETE_FAILED", message);
+  }
+}

@@ -31,6 +31,7 @@ enum ReferralStatus {
   REJECTED
   SUBMITTED_TO_SUBSIDIARY
   IN_PROCESS
+  REVISION_BY_SUBSIDIARY
   COMPLETED
   CANCELLED
 }
@@ -68,6 +69,7 @@ enum NotificationType {
   REFERRAL_APPROVED
   REFERRAL_REJECTED
   REVISION_REQUIRED
+  REVISION_BY_SUBSIDIARY
   REFERRAL_ASSIGNED
   STATUS_CHANGED
   SYSTEM
@@ -176,6 +178,7 @@ model Referral {
   customerIdentifier String?
   customerEmail      String?
   customerPhone      String?
+  annualTaxRevenue   Decimal?       @db.Decimal(18, 2)
 
   subject     String?
   description String?

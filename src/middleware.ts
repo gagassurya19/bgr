@@ -15,6 +15,8 @@ export const config = {
     "/users/:path*",
     "/business-groups/:path*",
     "/settings/:path*",
+    "/simulasi-kkb/:path*",
+    "/simulasi-asuransi/:path*",
   ],
 };
 

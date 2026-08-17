@@ -39,6 +39,11 @@ export function getNotificationTypeMeta(type: NotificationType) {
       icon: RefreshCw,
       accent: "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300",
     },
+    REVISION_BY_SUBSIDIARY: {
+      label: "Revisi Anak Perusahaan",
+      icon: RefreshCw,
+      accent: "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300",
+    },
     REFERRAL_ASSIGNED: {
       label: "Referral Ditugaskan",
       icon: UserPlus,

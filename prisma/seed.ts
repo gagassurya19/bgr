@@ -82,19 +82,58 @@ async function main() {
     });
   }
 
+  // Persyaratan dokumen bersifat GLOBAL (businessGroupId = null) sehingga
+  // berlaku untuk semua business group tanpa data redundan per group.
   const docRequirements = [
     { code: "KTP", name: "KTP", isRequired: true, sortOrder: 1 },
     { code: "KK", name: "Kartu Keluarga", isRequired: true, sortOrder: 2 },
     { code: "NPWP", name: "NPWP", isRequired: true, sortOrder: 3 },
-    { code: "PBB", name: "PBB / Sertifikat", isRequired: false, sortOrder: 4 },
+    { code: "MUTASI_REKENING", name: "Mutasi Rekening (3 Bulan Terakhir)", isRequired: false, sortOrder: 4 },
+    { code: "SPK", name: "Surat Pemesanan Kendaraan (SPK)", isRequired: false, sortOrder: 5 },
+    { code: "IBS", name: "IBS (Informasi Bank Statement / Form IBS)", isRequired: false, sortOrder: 6 },
+    { code: "SPT_PAJAK", name: "Laporan Pajak / SPT Tahunan (Bukti Omset)", isRequired: false, sortOrder: 7 },
+    { code: "PBB", name: "PBB / Sertifikat", isRequired: false, sortOrder: 8 },
   ];
 
   for (const req of docRequirements) {
-    await prisma.documentRequirement.upsert({
-      where: { businessGroupId_code: { businessGroupId: financeGroup.id, code: req.code } },
-      update: { isRequired: req.isRequired, isActive: true },
-      create: { ...req, businessGroupId: financeGroup.id },
+    // Upsert persyaratan global (businessGroupId = null).
+    const existingGlobal = await prisma.documentRequirement.findFirst({
+      where: { code: req.code, businessGroupId: null },
     });
+
+    if (existingGlobal) {
+      await prisma.documentRequirement.update({
+        where: { id: existingGlobal.id },
+        data: { name: req.name, isRequired: req.isRequired, isActive: true, sortOrder: req.sortOrder },
+      });
+    } else {
+      await prisma.documentRequirement.create({
+        data: { ...req, businessGroupId: null },
+      });
+    }
+
+    // Jika sebelumnya tersimpan per business group, pindahkan dokumen yang sudah
+    // terpaut ke persyaratan global, lalu hapus data redundan per group.
+    const perGroupRequirements = await prisma.documentRequirement.findMany({
+      where: { code: req.code, businessGroupId: { not: null } },
+      select: { id: true },
+    });
+
+    if (perGroupRequirements.length > 0) {
+      const globalReq = await prisma.documentRequirement.findFirst({
+        where: { code: req.code, businessGroupId: null },
+      });
+
+      if (globalReq) {
+        for (const pg of perGroupRequirements) {
+          await prisma.referralDocument.updateMany({
+            where: { requirementId: pg.id },
+            data: { requirementId: globalReq.id },
+          });
+          await prisma.documentRequirement.delete({ where: { id: pg.id } });
+        }
+      }
+    }
 
     if (req.isRequired) {
       await prisma.validationRule.upsert({

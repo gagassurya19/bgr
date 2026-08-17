@@ -11,16 +11,18 @@ import {
   submitToSubsidiaryAction,
   updateProcessingStatusAction,
 } from "@/actions/approval.actions";
-import { uploadDocumentAction } from "@/actions/document.actions";
-import { Button, Card, CardContent, CardHeader, CardTitle, Input, Label, Select, Textarea, Alert } from "@/components/ui";
+import { uploadDocumentAction, deleteDocumentAction } from "@/actions/document.actions";
+import { Button, Card, CardContent, CardHeader, CardTitle, Input, Label, Select, Textarea, Alert, Badge } from "@/components/ui";
 import { StatusBadge } from "@/components/referral/status-badge";
-import { formatDate } from "@/lib/utils";
+import { formatDate, formatCurrency } from "@/lib/utils";
+import { PdfThumbnail } from "@/components/referral/pdf-thumbnail";
 import {
   formatUploadError,
   MAX_UPLOAD_LABEL,
   validateUploadFileSize,
 } from "@/lib/upload.constants";
-import { ReferralStatus } from "@prisma/client";
+import { ReferralStatus, Prisma } from "@prisma/client";
+import { AlertTriangle, FileEdit } from "lucide-react";
 
 type ReferralDetail = {
   id: string;
@@ -30,6 +32,7 @@ type ReferralDetail = {
   customerIdentifier: string | null;
   customerEmail: string | null;
   customerPhone: string | null;
+  annualTaxRevenue: Prisma.Decimal | number | null;
   subject: string | null;
   description: string | null;
   createdAt: Date;
@@ -38,6 +41,7 @@ type ReferralDetail = {
   documents: Array<{
     id: string;
     originalFilename: string;
+    mimeType: string;
     uploadedAt: Date;
     requirement: { code: string; name: string } | null;
   }>;
@@ -64,6 +68,72 @@ type ReferralDetail = {
 
 type Requirement = { id: string; code: string; name: string };
 
+function DocumentPreview({ doc, canView, compact = false }: { doc: ReferralDetail["documents"][number]; canView: boolean; compact?: boolean }) {
+  if (!canView) {
+    return (
+      <div className={compact ? "flex h-24 items-center justify-center rounded-lg border border-dashed border-slate-300 bg-slate-50 px-3 text-center dark:border-[#1e3a5f]/60 dark:bg-[#0f1a2e]" : "rounded-lg border border-dashed border-slate-300 bg-slate-50 p-6 text-center dark:border-[#1e3a5f]/60 dark:bg-[#0f1a2e]"}>
+        <p className="line-clamp-2 text-xs text-slate-600 dark:text-slate-300">{doc.originalFilename}</p>
+      </div>
+    );
+  }
+
+  if (doc.mimeType.startsWith("image/")) {
+    return (
+      <img
+        src={`/api/documents/${doc.id}`}
+        alt={doc.originalFilename}
+        className={compact ? "h-full w-full rounded-md object-cover" : "h-full w-full object-contain"}
+      />
+    );
+  }
+
+  if (doc.mimeType === "application/pdf" || doc.mimeType.startsWith("text/")) {
+    return (
+      <div className={compact ? "h-full w-full" : "h-full w-full overflow-hidden"}>
+        {doc.mimeType === "application/pdf" ? (
+          compact ? (
+            <PdfThumbnail documentId={doc.id} filename={doc.originalFilename} />
+          ) : (
+            <iframe
+              src={`/api/documents/${doc.id}`}
+              title={doc.originalFilename}
+              className="h-full w-full"
+            />
+          )
+        ) : compact ? (
+          <div className="flex h-full w-full items-center justify-center rounded-md bg-slate-100 text-slate-700 dark:bg-[#0f1a2e] dark:text-slate-300">
+            <p className="text-[10px] font-semibold uppercase tracking-wide">TXT</p>
+          </div>
+        ) : (
+          <iframe
+            src={`/api/documents/${doc.id}`}
+            title={doc.originalFilename}
+            className="h-full w-full"
+          />
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className={compact ? "flex h-full items-center justify-center rounded-md border border-dashed border-slate-300 bg-slate-100 px-2 text-center dark:border-[#1e3a5f]/60 dark:bg-[#0f1a2e]" : "flex items-center justify-center rounded-lg border border-dashed border-slate-300 bg-slate-50 p-8 text-center dark:border-[#1e3a5f]/60 dark:bg-[#0f1a2e]"}>
+      <div>
+        <p className={compact ? "text-[10px] text-slate-600 dark:text-slate-300" : "text-sm text-slate-600 dark:text-slate-300"}>File</p>
+        {!compact && (
+          <a
+            href={`/api/documents/${doc.id}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="mt-2 inline-block text-sm font-medium text-[#0066AE] hover:underline dark:text-[#63ACF2]"
+          >
+            Buka di tab baru
+          </a>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export function ReferralDetailView({
   referral,
   requirements,
@@ -71,6 +141,7 @@ export function ReferralDetailView({
   canSubmit,
   canApprove,
   canProcess,
+  canViewDocuments,
 }: {
   referral: ReferralDetail;
   requirements: Requirement[];
@@ -78,23 +149,61 @@ export function ReferralDetailView({
   canSubmit: boolean;
   canApprove: boolean;
   canProcess: boolean;
+  canViewDocuments: boolean;
 }) {
   const router = useRouter();
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [revisionNote, setRevisionNote] = useState("");
+  const [subsidiaryRevisionModalOpen, setSubsidiaryRevisionModalOpen] = useState(false);
+  const [subsidiaryRevisionNote, setSubsidiaryRevisionNote] = useState("");
+  const [selectedDocumentId, setSelectedDocumentId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  const selectedDocument = referral.documents.find((doc) => doc.id === selectedDocumentId) ?? null;
+
+  async function handleDeleteDocument(documentId: string) {
+    const doc = referral.documents.find((d) => d.id === documentId);
+    if (!doc) return;
+    const confirmed = window.confirm(
+      `Hapus dokumen "${doc.originalFilename}"? Tindakan ini tidak dapat dibatalkan.`,
+    );
+    if (!confirmed) return;
+
+    setDeletingId(documentId);
+    setError(null);
+    setMessage(null);
+    try {
+      const result = await deleteDocumentAction(referral.id, documentId);
+      if (!result.success) {
+        setError(result.message);
+        return;
+      }
+      if (selectedDocumentId === documentId) {
+        setSelectedDocumentId(null);
+      }
+      setMessage("Dokumen berhasil dihapus.");
+      router.refresh();
+    } finally {
+      setDeletingId(null);
+    }
+  }
 
   async function handleUpdate(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setLoading(true);
     setError(null);
     const form = new FormData(e.currentTarget);
+    const rawAnnualTax = form.get("annualTaxRevenue") as string;
+    const annualTaxRevenue = rawAnnualTax ? parseFloat(rawAnnualTax) : undefined;
     const result = await updateReferralAction(referral.id, {
       customerName: (form.get("customerName") as string) || undefined,
       customerIdentifier: (form.get("customerIdentifier") as string) || undefined,
       customerEmail: (form.get("customerEmail") as string) || undefined,
       customerPhone: (form.get("customerPhone") as string) || undefined,
+      annualTaxRevenue,
       subject: (form.get("subject") as string) || undefined,
       description: (form.get("description") as string) || undefined,
     });
@@ -169,9 +278,10 @@ export function ReferralDetailView({
     setUploadError(validateUploadFileSize(file.size));
   }
 
-  async function handleApproval(decision: "APPROVED" | "REJECTED" | "REVISION_REQUIRED") {
+  async function handleSetujuiOrTolak(decision: "APPROVED" | "REJECTED") {
     const note = prompt("Catatan (opsional):") ?? undefined;
     setLoading(true);
+    setError(null);
     const result = await approveReferralAction({ referralId: referral.id, decision, note });
     setLoading(false);
     if (!result.success) {
@@ -179,6 +289,28 @@ export function ReferralDetailView({
       return;
     }
     setMessage("Keputusan persetujuan tersimpan.");
+    router.refresh();
+  }
+
+  async function handleSubmitRevision() {
+    if (!revisionNote.trim()) {
+      setError("Catatan revisi wajib diisi.");
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    const result = await approveReferralAction({
+      referralId: referral.id,
+      decision: "REVISION_REQUIRED",
+      note: revisionNote.trim(),
+    });
+    setLoading(false);
+    if (!result.success) {
+      setError(result.message);
+      return;
+    }
+    setRevisionNote("");
+    setMessage("Referral dikembalikan untuk perbaikan dokumen.");
     router.refresh();
   }
 
@@ -194,9 +326,9 @@ export function ReferralDetailView({
     router.refresh();
   }
 
-  async function handleProcessing(toStatus: "IN_PROCESS" | "COMPLETED" | "REJECTED" | "CANCELLED") {
+  async function handleProcessing(toStatus: "IN_PROCESS" | "COMPLETED" | "REJECTED" | "REVISION_BY_SUBSIDIARY" | "CANCELLED", note?: string) {
     setLoading(true);
-    const result = await updateProcessingStatusAction(referral.id, toStatus);
+    const result = await updateProcessingStatusAction(referral.id, toStatus, note);
     setLoading(false);
     if (!result.success) {
       setError(result.message);
@@ -206,7 +338,35 @@ export function ReferralDetailView({
     router.refresh();
   }
 
+  async function handleSubsidiaryRevision() {
+    if (!subsidiaryRevisionNote.trim()) {
+      setError("Deskripsi revisi wajib diisi.");
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    const result = await updateProcessingStatusAction(
+      referral.id,
+      "REVISION_BY_SUBSIDIARY",
+      subsidiaryRevisionNote.trim(),
+    );
+    setLoading(false);
+    if (!result.success) {
+      setError(result.message);
+      return;
+    }
+    setSubsidiaryRevisionModalOpen(false);
+    setSubsidiaryRevisionNote("");
+    setMessage("Referral dikembalikan untuk revisi oleh Anak Perusahaan.");
+    router.refresh();
+  }
+
   const latestValidation = referral.validationRuns[0];
+
+  const latestRevision = (["REVISION_REQUIRED", "REVISION_BY_SUBSIDIARY"] as ReferralStatus[])
+    .map((st) => referral.statusHistory.find((h) => h.toStatus === st))
+    .filter(Boolean)
+    .sort((a, b) => new Date(b!.createdAt).getTime() - new Date(a!.createdAt).getTime())[0];
 
   const uploadedCodes = new Set(
     referral.documents
@@ -229,6 +389,25 @@ export function ReferralDetailView({
       {message && <p className="rounded bg-green-50 p-3 text-sm text-green-700">{message}</p>}
       {error && <p className="rounded bg-red-50 p-3 text-sm text-red-700">{error}</p>}
 
+      {latestRevision && latestRevision.note && (
+        <div className="flex items-start gap-3 rounded-xl border border-amber-300 bg-amber-50 p-4 dark:border-amber-500/40 dark:bg-amber-900/20">
+          <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-500" />
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-amber-800 dark:text-amber-300">
+              {latestRevision.toStatus === "REVISION_BY_SUBSIDIARY"
+                ? "📌 Catatan Deskripsi Revisi dari Anak Perusahaan"
+                : "📌 Catatan Deskripsi Revisi dari Head Unit"}
+            </p>
+            <p className="mt-1 whitespace-pre-wrap text-sm text-amber-800 dark:text-amber-200">
+              {latestRevision.note}
+            </p>
+            <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">
+              Diminta oleh {latestRevision.changedBy.name} · {formatDate(latestRevision.createdAt)}
+            </p>
+          </div>
+        </div>
+      )}
+
       <div className="flex flex-wrap gap-2">
         {canSubmit && (
           <Button onClick={handleSubmitReferral} disabled={loading}>
@@ -237,14 +416,11 @@ export function ReferralDetailView({
         )}
         {canApprove && referral.status === "PENDING_APPROVAL" && (
           <>
-            <Button onClick={() => handleApproval("APPROVED")} disabled={loading}>
+            <Button onClick={() => handleSetujuiOrTolak("APPROVED")} disabled={loading}>
               Setujui
             </Button>
-            <Button variant="destructive" onClick={() => handleApproval("REJECTED")} disabled={loading}>
+            <Button variant="destructive" onClick={() => handleSetujuiOrTolak("REJECTED")} disabled={loading}>
               Tolak
-            </Button>
-            <Button variant="secondary" onClick={() => handleApproval("REVISION_REQUIRED")} disabled={loading}>
-              Minta Revisi
             </Button>
           </>
         )}
@@ -254,17 +430,31 @@ export function ReferralDetailView({
           </Button>
         )}
         {canProcess && referral.status === "SUBMITTED_TO_SUBSIDIARY" && (
-          <Button onClick={() => handleProcessing("IN_PROCESS")} disabled={loading}>
-            Mulai Proses
-          </Button>
+          <>
+            <Button onClick={() => handleProcessing("IN_PROCESS")} disabled={loading}>
+              Mulai Proses
+            </Button>
+            <Button onClick={() => handleProcessing("COMPLETED")} disabled={loading}>
+              Setujui / Selesai
+            </Button>
+            <Button variant="destructive" onClick={() => handleProcessing("REJECTED")} disabled={loading}>
+              Tolak
+            </Button>
+            <Button variant="secondary" onClick={() => setSubsidiaryRevisionModalOpen(true)} disabled={loading}>
+              Minta Revisi
+            </Button>
+          </>
         )}
         {canProcess && referral.status === "IN_PROCESS" && (
           <>
             <Button onClick={() => handleProcessing("COMPLETED")} disabled={loading}>
-              Selesai
+              Setujui / Selesai
             </Button>
             <Button variant="destructive" onClick={() => handleProcessing("REJECTED")} disabled={loading}>
               Tolak
+            </Button>
+            <Button variant="secondary" onClick={() => setSubsidiaryRevisionModalOpen(true)} disabled={loading}>
+              Minta Revisi
             </Button>
           </>
         )}
@@ -295,6 +485,26 @@ export function ReferralDetailView({
                   <Input id="customerPhone" name="customerPhone" defaultValue={referral.customerPhone ?? ""} />
                 </div>
                 <div className="space-y-1">
+                  <Label htmlFor="annualTaxRevenue">Omset per Tahun (yg dilaporkan ke pajak)</Label>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      id="annualTaxRevenue"
+                      name="annualTaxRevenue"
+                      type="number"
+                      step="1000000"
+                      min="0"
+                      defaultValue={
+                        referral.annualTaxRevenue != null ? Number(referral.annualTaxRevenue) : ""
+                      }
+                    />
+                    {referral.annualTaxRevenue != null && (
+                      <span className="whitespace-nowrap text-xs text-slate-500">
+                        {formatCurrency(Number(referral.annualTaxRevenue))}
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <div className="space-y-1">
                   <Label htmlFor="subject">Subjek</Label>
                   <Input id="subject" name="subject" defaultValue={referral.subject ?? ""} />
                 </div>
@@ -312,6 +522,7 @@ export function ReferralDetailView({
                 <div><dt className="text-slate-500">Identitas</dt><dd>{referral.customerIdentifier ?? "-"}</dd></div>
                 <div><dt className="text-slate-500">Email</dt><dd>{referral.customerEmail ?? "-"}</dd></div>
                 <div><dt className="text-slate-500">Telepon</dt><dd>{referral.customerPhone ?? "-"}</dd></div>
+                <div><dt className="text-slate-500">Omset per Tahun (yg dilaporkan ke pajak)</dt><dd>{referral.annualTaxRevenue != null ? formatCurrency(Number(referral.annualTaxRevenue)) : "-"}</dd></div>
                 <div><dt className="text-slate-500">Subjek</dt><dd>{referral.subject ?? "-"}</dd></div>
                 <div><dt className="text-slate-500">Deskripsi</dt><dd>{referral.description ?? "-"}</dd></div>
               </dl>
@@ -382,25 +593,195 @@ export function ReferralDetailView({
             {referral.documents.length === 0 ? (
               <p className="text-sm text-slate-500">Belum ada dokumen diunggah.</p>
             ) : (
-              <ul className="space-y-2 text-sm">
-                {referral.documents.map((d) => (
-                  <li key={d.id} className="flex justify-between border-b border-slate-100 py-2">
-                    <span>
-                      {d.originalFilename}
-                      {d.requirement && (
-                        <span className="ml-2 text-slate-400">
-                          ({d.requirement.name} · {d.requirement.code})
-                        </span>
+              <div className="space-y-3">
+                <div className="flex gap-3 overflow-x-auto pb-2">
+                  {referral.documents.map((d) => (
+                    <div
+                      key={d.id}
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => setSelectedDocumentId(d.id)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          setSelectedDocumentId(d.id);
+                        }
+                      }}
+                      className="group relative w-40 flex-shrink-0 cursor-pointer rounded-xl border border-slate-200 bg-slate-50 p-2 text-left transition hover:border-[#0066AE]/60 hover:bg-blue-50 focus:outline-none focus:ring-2 focus:ring-[#0066AE]/30 dark:border-[#1e3a5f]/60 dark:bg-[#0f1a2e] dark:hover:border-[#63ACF2]/60"
+                    >
+                      {canEdit && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeleteDocument(d.id);
+                          }}
+                          disabled={deletingId === d.id}
+                          title="Hapus dokumen"
+                          className="absolute right-2 top-2 z-10 rounded-md border border-slate-200 bg-white/90 px-1.5 py-0.5 text-[10px] font-medium text-red-600 shadow-sm transition hover:bg-red-50 dark:border-[#1e3a5f]/60 dark:bg-[#111d33]/90 dark:text-red-400 dark:hover:bg-red-900/20"
+                        >
+                          {deletingId === d.id ? "..." : "Hapus"}
+                        </button>
                       )}
-                    </span>
-                    <span className="text-slate-400">{formatDate(d.uploadedAt)}</span>
-                  </li>
-                ))}
-              </ul>
+                      <div className="mb-2 h-24 overflow-hidden rounded-md border border-slate-200 bg-white dark:border-[#1e3a5f]/60 dark:bg-[#111d33]">
+                        <DocumentPreview doc={d} canView={canViewDocuments} compact />
+                      </div>
+                      <div className="space-y-1">
+                        <p className="truncate text-xs font-medium text-slate-900 dark:text-white">{d.originalFilename}</p>
+                        {d.requirement && (
+                          <Badge variant="info" className="max-w-full truncate text-[10px]">
+                            {d.requirement.name}
+                          </Badge>
+                        )}
+                        <p className="text-[10px] text-slate-400">{formatDate(d.uploadedAt)}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
             )}
           </CardContent>
         </Card>
       </div>
+
+      {selectedDocument && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4"
+          onClick={() => setSelectedDocumentId(null)}
+        >
+          <div
+            className="relative flex h-[calc(100dvh-2rem)] w-[calc(100dvw-2rem)] max-w-none flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-[#1e3a5f]/60 dark:bg-[#111d33]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3 dark:border-[#1e3a5f]/60">
+              <div className="min-w-0">
+                <p className="truncate text-sm font-semibold text-slate-900 dark:text-white">
+                  {selectedDocument.originalFilename}
+                </p>
+                {selectedDocument.requirement && (
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    {selectedDocument.requirement.name} · {selectedDocument.requirement.code}
+                  </p>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                {canEdit && (
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteDocument(selectedDocument.id)}
+                    disabled={deletingId === selectedDocument.id}
+                    className="rounded-md border border-red-200 px-2 py-1 text-sm text-red-600 hover:bg-red-50 dark:border-red-900/40 dark:text-red-400 dark:hover:bg-red-900/20"
+                  >
+                    {deletingId === selectedDocument.id ? "Menghapus..." : "Hapus"}
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setSelectedDocumentId(null)}
+                  className="rounded-md border border-slate-200 px-2 py-1 text-sm text-slate-600 hover:bg-slate-100 dark:border-[#1e3a5f]/60 dark:text-slate-300 dark:hover:bg-[#0f1a2e]"
+                >
+                  Tutup
+                </button>
+              </div>
+            </div>
+            <div className="flex min-h-0 flex-1 items-center justify-center overflow-auto bg-slate-50 p-4 dark:bg-[#0a1220]">
+              <DocumentPreview doc={selectedDocument} canView={canViewDocuments} />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {subsidiaryRevisionModalOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4"
+          onClick={() => setSubsidiaryRevisionModalOpen(false)}
+        >
+          <div
+            className="w-full max-w-lg overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-[#1e3a5f]/60 dark:bg-[#111d33]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-slate-200 px-5 py-3 dark:border-[#1e3a5f]/60">
+              <div className="flex items-center gap-2">
+                <FileEdit className="h-5 w-5 text-[#0066AE] dark:text-[#63ACF2]" />
+                <h3 className="text-base font-semibold text-slate-900 dark:text-white">
+                  Minta Revisi (Anak Perusahaan)
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSubsidiaryRevisionModalOpen(false)}
+                className="rounded-md border border-slate-200 px-2 py-1 text-sm text-slate-600 hover:bg-slate-100 dark:border-[#1e3a5f]/60 dark:text-slate-300 dark:hover:bg-[#0f1a2e]"
+              >
+                Tutup
+              </button>
+            </div>
+            <div className="space-y-3 p-5">
+              <p className="text-sm text-slate-600 dark:text-slate-300">
+                Tuliskan deskripsi revisi yang perlu diperbaiki oleh Referral Officer. Catatan ini akan terlihat sebagai banner di halaman referral.
+              </p>
+              <div className="space-y-1">
+                <Label htmlFor="subsidiary-revision-note">Deskripsi / Catatan Revisi *</Label>
+                <Textarea
+                  id="subsidiary-revision-note"
+                  value={subsidiaryRevisionNote}
+                  onChange={(e) => setSubsidiaryRevisionNote(e.target.value)}
+                  rows={4}
+                  placeholder="Jelaskan bagian dokumen/data yang perlu diperbaiki beserta alasan..."
+                />
+              </div>
+              {error && <Alert variant="error">{error}</Alert>}
+              <div className="flex justify-end gap-2 pt-1">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setSubsidiaryRevisionModalOpen(false)}
+                  disabled={loading}
+                >
+                  Batal
+                </Button>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={handleSubsidiaryRevision}
+                  disabled={loading || !subsidiaryRevisionNote.trim()}
+                >
+                  {loading ? "Mengirim..." : "Kirim Revisi"}
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {canApprove && referral.status === "PENDING_APPROVAL" && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Minta Revisi Dokumen</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              <div className="space-y-1">
+                <Label htmlFor="revision-note">Catatan Revisi *</Label>
+                <Textarea
+                  id="revision-note"
+                  value={revisionNote}
+                  onChange={(e) => setRevisionNote(e.target.value)}
+                  rows={3}
+                  placeholder="Jelaskan bagian dokumen yang perlu diperbaiki..."
+                />
+              </div>
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={handleSubmitRevision}
+                disabled={loading || !revisionNote.trim()}
+              >
+                {loading ? "Mengirim..." : "Kirim Revisi"}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {latestValidation && (
         <Card>
@@ -425,15 +806,49 @@ export function ReferralDetailView({
             <CardTitle>Riwayat Persetujuan</CardTitle>
           </CardHeader>
           <CardContent>
-            <ul className="space-y-3 text-sm">
-              {referral.approvals.map((a, i) => (
-                <li key={i} className="border-b border-slate-100 pb-2">
-                  <div className="font-medium">{a.decision} — {a.approver.name}</div>
-                  <div className="text-slate-500">{formatDate(a.decidedAt)}</div>
-                  {a.note && <div className="mt-1">{a.note}</div>}
-                </li>
-              ))}
-            </ul>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-sm">
+                <thead className="border-b border-slate-200 text-[11px] font-semibold uppercase text-slate-500 dark:border-[#1e3a5f]/60">
+                  <tr>
+                    <th className="py-2.5 pr-4">Keputusan</th>
+                    <th className="py-2.5 pr-4">Disetujui / Diproses Oleh</th>
+                    <th className="py-2.5 pr-4">Waktu</th>
+                    <th className="py-2.5">Catatan</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 dark:divide-[#1e3a5f]/40">
+                  {referral.approvals.map((a, i) => {
+                    const isRevision = a.decision === "REVISION_REQUIRED" || a.decision === "REVISION_BY_SUBSIDIARY";
+                    const decisionLabel =
+                      a.decision === "APPROVED"
+                        ? "Disetujui"
+                        : a.decision === "REJECTED"
+                          ? "Ditolak"
+                          : a.decision === "REVISION_BY_SUBSIDIARY"
+                            ? "Revisi Anak Perusahaan"
+                            : "Revisi Diperlukan";
+                    return (
+                      <tr key={i} className="align-top hover:bg-slate-50 dark:hover:bg-[#1e3a5f]/20">
+                        <td className="py-3 pr-4">
+                          <Badge variant={isRevision ? "warning" : a.decision === "APPROVED" ? "success" : "danger"}>
+                            {decisionLabel}
+                          </Badge>
+                        </td>
+                        <td className="py-3 pr-4 font-medium text-slate-900 dark:text-white">
+                          {a.approver.name}
+                        </td>
+                        <td className="py-3 pr-4 whitespace-nowrap text-slate-500 dark:text-slate-400">
+                          {formatDate(a.decidedAt)}
+                        </td>
+                        <td className="py-3 text-slate-600 dark:text-slate-300">
+                          {a.note ? a.note : <span className="text-slate-400">-</span>}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           </CardContent>
         </Card>
       )}
@@ -443,19 +858,44 @@ export function ReferralDetailView({
           <CardTitle>Timeline</CardTitle>
         </CardHeader>
         <CardContent>
-          <ul className="space-y-3 text-sm">
-            {referral.statusHistory.map((h, i) => (
-              <li key={i} className="border-l-2 border-[#0066AE] pl-4">
-                <div className="font-medium">
-                  {h.fromStatus ? `${h.fromStatus} → ${h.toStatus}` : h.toStatus}
-                </div>
-                <div className="text-slate-500">
-                  {h.changedBy.name} · {formatDate(h.createdAt)}
-                </div>
-                {h.note && <div className="mt-1 text-slate-600">{h.note}</div>}
-              </li>
-            ))}
-          </ul>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <thead className="border-b border-slate-200 text-[11px] font-semibold uppercase text-slate-500 dark:border-[#1e3a5f]/60">
+                <tr>
+                  <th className="py-2.5 pr-4">Status Perubahan</th>
+                  <th className="py-2.5 pr-4">Oleh</th>
+                  <th className="py-2.5 pr-4">Waktu</th>
+                  <th className="py-2.5">Catatan</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 dark:divide-[#1e3a5f]/40">
+                {referral.statusHistory.map((h, i) => (
+                  <tr key={i} className="align-top hover:bg-slate-50 dark:hover:bg-[#1e3a5f]/20">
+                    <td className="py-3 pr-4">
+                      <span className="inline-flex items-center gap-1.5 text-slate-900 dark:text-white">
+                        <span className="rounded-md bg-slate-100 px-1.5 py-0.5 text-xs font-semibold text-slate-700 dark:bg-slate-800 dark:text-slate-300">
+                          {h.fromStatus ? h.fromStatus : "AKHIR"}
+                        </span>
+                        <span className="text-slate-400">→</span>
+                        <span className="rounded-md bg-[#0066AE]/10 px-1.5 py-0.5 text-xs font-semibold text-[#0066AE] dark:bg-[#0066AE]/20 dark:text-[#63ACF2]">
+                          {h.toStatus}
+                        </span>
+                      </span>
+                    </td>
+                    <td className="py-3 pr-4 font-medium text-slate-900 dark:text-white">
+                      {h.changedBy.name}
+                    </td>
+                    <td className="py-3 pr-4 whitespace-nowrap text-slate-500 dark:text-slate-400">
+                      {formatDate(h.createdAt)}
+                    </td>
+                    <td className="py-3 text-slate-600 dark:text-slate-300">
+                      {h.note ? h.note : <span className="text-slate-400">-</span>}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </CardContent>
       </Card>
     </div>

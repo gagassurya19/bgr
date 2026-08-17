@@ -221,7 +221,7 @@ export async function submitToSubsidiaryAction(referralId: string): Promise<Acti
 
 export async function updateProcessingStatusAction(
   referralId: string,
-  toStatus: "IN_PROCESS" | "COMPLETED" | "REJECTED" | "CANCELLED",
+  toStatus: "IN_PROCESS" | "COMPLETED" | "REJECTED" | "REVISION_BY_SUBSIDIARY" | "CANCELLED",
   note?: string,
 ): Promise<ActionResult> {
   const session = await auth();
@@ -234,6 +234,10 @@ export async function updateProcessingStatusAction(
   const referral = await prisma.referral.findUnique({ where: { id: referralId } });
   if (!referral) {
     return failure("NOT_FOUND", "Referral tidak ditemukan.");
+  }
+
+  if (toStatus === "REVISION_BY_SUBSIDIARY" && (!note || !note.trim())) {
+    return failure("VALIDATION_ERROR", "Deskripsi revisi wajib diisi saat meminta revisi.");
   }
 
   try {
@@ -257,7 +261,7 @@ export async function updateProcessingStatusAction(
         fromStatus: referral.status,
         toStatus,
         changedById: session.user.id,
-        note,
+        note: note || (toStatus === "COMPLETED" ? "Disetujui / Selesai diproses oleh anak perusahaan" : undefined),
       },
     });
 
@@ -269,17 +273,33 @@ export async function updateProcessingStatusAction(
         entityId: referralId,
         referralId,
         oldData: { status: referral.status },
-        newData: { status: toStatus },
+        newData: { status: toStatus, note },
       },
       tx,
     );
 
+    const isRevision = toStatus === "REVISION_BY_SUBSIDIARY";
+    const notificationType = isRevision
+      ? "REVISION_BY_SUBSIDIARY"
+      : "STATUS_CHANGED";
+    const notificationTitle = isRevision
+      ? "Revisi dari Anak Perusahaan"
+      : toStatus === "COMPLETED"
+        ? "Referral Disetujui & Selesai"
+        : toStatus === "REJECTED"
+          ? "Referral Ditolak Anak Perusahaan"
+          : "Status Referral Diperbarui";
+
+    const notificationMessage = isRevision
+      ? `Referral ${referral.referralNumber} memerlukan revisi dari Anak Perusahaan: ${note}`
+      : `Referral ${referral.referralNumber} berstatus ${toStatus}.`;
+
     await notificationService.create(
       {
         recipientId: referral.createdById,
-        type: "STATUS_CHANGED",
-        title: "Status Referral Diperbarui",
-        message: `Referral ${referral.referralNumber} berstatus ${toStatus}.`,
+        type: notificationType,
+        title: notificationTitle,
+        message: notificationMessage,
         referralId,
       },
       tx,
