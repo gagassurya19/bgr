@@ -18,6 +18,11 @@ export function DemoGuideFab() {
   const [open, setOpen] = useState(false);
   const [switching, setSwitching] = useState(false);
 
+  // Sembunyikan tombol panduan demo pada landing page publik.
+  if (pathname === "/") {
+    return null;
+  }
+
   async function handleUseAccount(email: string) {
     setOpen(false);
 

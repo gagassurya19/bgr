@@ -45,3 +45,55 @@ body {
   background: var(--surface);
   box-shadow: var(--card-shadow);
 }
+
+/* ===== Landing page animations ===== */
+@keyframes bgr-rise {
+  from {
+    opacity: 0;
+    transform: translateY(28px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes bgr-float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+}
+
+@keyframes bgr-pulse-soft {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.animate-bgr-rise {
+  animation: bgr-rise 0.8s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.animate-bgr-float {
+  animation: bgr-float 5s ease-in-out infinite;
+}
+
+.animate-bgr-pulse-soft {
+  animation: bgr-pulse-soft 3.5s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-bgr-rise,
+  .animate-bgr-float,
+  .animate-bgr-pulse-soft {
+    animation: none;
+  }
+}
